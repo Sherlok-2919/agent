@@ -24,8 +24,8 @@ export const rankTiers: RankTier[] = [
     bgGradient: "linear-gradient(135deg, #0d2e1f, #14382a)",
     icon: "▲",
     players: [
-      { name: "Agent_X", role: "Duelist Main", uploads: 47, photo: "" },
-      { name: "ShadowFX", role: "Controller", uploads: 38, photo: "" },
+      { name: "XonorOP", role: "Duelist Main", uploads: 47, photo: "" },
+      { name: "CTRL", role: "Pagolchoda Instalocker", uploads: 38, photo: "" },
     ],
   },
   {
@@ -34,8 +34,8 @@ export const rankTiers: RankTier[] = [
     bgGradient: "linear-gradient(135deg, #1f1428, #2a1a35)",
     icon: "◆",
     players: [
-      { name: "CyberNova", role: "Sentinel", uploads: 28, photo: "" },
-      { name: "GhostWire", role: "Initiator", uploads: 24, photo: "" },
+      { name: "Chronic", role: "Flex", uploads: 28, photo: "" },
+      { name: "Aegon", role: "Jogot Shreshto Chamber Chodna", uploads: 24, photo: "" },
     ],
   },
   {
@@ -44,9 +44,9 @@ export const rankTiers: RankTier[] = [
     bgGradient: "linear-gradient(135deg, #0f2328, #142e33)",
     icon: "⬡",
     players: [
-      { name: "PixelDrift", role: "IGL / Flex", uploads: 21, photo: "" },
-      { name: "NeonByte", role: "Smoker", uploads: 18, photo: "" },
-      { name: "VoidRunner", role: "Entry", uploads: 15, photo: "" },
+      { name: "ArkeNova", role: "Flex", uploads: 21, photo: "" },
+      { name: "Sherlok", role: "FLex/DudhSaken", uploads: 18, photo: "" },
+      { name: "KING", role: "Entry/Smoker", uploads: 15, photo: "" },
     ],
   },
   {
@@ -55,8 +55,8 @@ export const rankTiers: RankTier[] = [
     bgGradient: "linear-gradient(135deg, #1f1a0d, #2a2214)",
     icon: "★",
     players: [
-      { name: "Blitz", role: "Support", uploads: 12, photo: "" },
-      { name: "AceVenom", role: "Lurker", uploads: 9, photo: "" },
+      { name: "AGENT ENGINEER", role: "Support", uploads: 12, photo: "" },
+      { name: "BIPROJIT", role: "SAGE", uploads: 9, photo: "" },
     ],
   },
 ];
