@@ -1,49 +1,98 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-@media (prefers-color-scheme: dark) {
+/* ---------- Base Layer ---------- */
+@layer base {
   html {
-    color-scheme: dark;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply font-body bg-dark-bg text-val-cream leading-relaxed overflow-x-hidden min-h-screen;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { @apply bg-dark-bg; }
+  ::-webkit-scrollbar-thumb { @apply bg-val-red rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-val-teal; }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-bold tracking-wider leading-tight;
+  }
+
+  a { @apply text-inherit no-underline; }
+}
+
+/* ---------- Component Layer ---------- */
+@layer components {
+  /* Valorant-style clipped button */
+  .btn-val {
+    @apply inline-flex items-center gap-2 px-7 py-3 border-none font-heading text-xs font-bold tracking-widest uppercase cursor-pointer relative overflow-hidden transition-all duration-300;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  }
+
+  .btn-val-primary {
+    @apply btn-val bg-val-red text-white;
+    box-shadow: 0 0 20px rgba(255, 70, 85, 0.4), 0 0 60px rgba(255, 70, 85, 0.12);
+  }
+  .btn-val-primary:hover {
+    @apply -translate-y-0.5;
+    background: #ff5c6a;
+    box-shadow: 0 0 30px rgba(255, 70, 85, 0.5), 0 0 80px rgba(255, 70, 85, 0.2);
+  }
+
+  .btn-val-secondary {
+    @apply btn-val bg-transparent text-val-teal border border-val-teal;
+  }
+  .btn-val-secondary:hover {
+    @apply -translate-y-0.5;
+    background: rgba(23, 222, 166, 0.08);
+    box-shadow: 0 0 20px rgba(23, 222, 166, 0.4);
+  }
+
+  /* Valorant clipped badge */
+  .badge-val {
+    @apply inline-flex items-center gap-2 px-5 py-1.5 font-mono text-xs font-semibold text-val-red;
+    letter-spacing: 0.18em;
+    border: 1px solid rgba(255, 70, 85, 0.3);
+    background: rgba(255, 70, 85, 0.05);
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  }
+
+  /* Glass card */
+  .card-glass {
+    @apply bg-dark-card rounded-lg border transition-all duration-300;
+    border-color: rgba(255, 70, 85, 0.12);
+  }
+  .card-glass:hover {
+    @apply -translate-y-1;
+    border-color: rgba(255, 70, 85, 0.3);
+    box-shadow: 0 12px 50px rgba(255, 70, 85, 0.1);
+  }
+
+  /* Neon text */
+  .text-neon-red {
+    @apply text-val-red;
+    text-shadow: 0 0 10px rgba(255, 70, 85, 0.4), 0 0 40px rgba(255, 70, 85, 0.15);
+  }
+
+  .text-neon-teal {
+    @apply text-val-teal;
+    text-shadow: 0 0 10px rgba(23, 222, 166, 0.4), 0 0 40px rgba(23, 222, 166, 0.15);
+  }
+
+  /* Grid background */
+  .grid-bg {
+    @apply fixed inset-0 z-0 pointer-events-none;
+    background-image:
+      linear-gradient(rgba(255, 70, 85, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 70, 85, 0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
   }
 }
