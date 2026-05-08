@@ -1,6 +1,15 @@
 // ============================================
-//  GOOGLE DRIVE CONFIG — Folder IDs & API
+//  GOOGLE DRIVE CONFIG — Internal API Integration
 // ============================================
+
+/**
+ * All Drive operations now go through Next.js internal API routes:
+ *   /api/drive/photos  — list photos from Google Drive
+ *   /api/drive/videos  — list videos from Google Drive
+ *   /api/drive/upload  — upload files to Google Drive
+ *
+ * No external backend needed — the API key is used server-side only.
+ */
 
 export const driveConfig = {
   /** Root shared folder: AGENT */
@@ -12,24 +21,22 @@ export const driveConfig = {
   /** Video subfolder inside AGENT */
   videoFolderId: "18z7X9jm9m8a0-wc7ukqY15VTzcYBvYaM",
 
-  /**
-   * Google Drive API key (read-only, public folders only).
-   * Set via NEXT_PUBLIC_GOOGLE_API_KEY env variable.
-   * Without this, the app falls back to placeholder images.
-   */
-  apiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
+  /** Internal API endpoints */
+  photosEndpoint: "/api/drive/photos",
+  videosEndpoint: "/api/drive/videos",
+  uploadEndpoint: "/api/drive/upload",
 
   /** Build a direct thumbnail URL from a Drive file ID */
   thumbnailUrl: (fileId: string, size = 600) =>
-    `https://lh3.googleusercontent.com/d/${fileId}=w${size}`,
+    `https://drive.google.com/thumbnail?id=${fileId}&sz=w${size}`,
 
   /** Build a full-resolution URL from a Drive file ID */
   fullUrl: (fileId: string) =>
-    `https://drive.google.com/uc?export=view&id=${fileId}`,
+    `https://drive.google.com/thumbnail?id=${fileId}&sz=w1920`,
 
-  /** Drive API endpoint for listing files */
-  listFilesUrl: (folderId: string, apiKey: string, pageSize = 50) =>
-    `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&fields=files(id,name,mimeType,thumbnailLink,createdTime)&pageSize=${pageSize}&orderBy=createdTime+desc&key=${apiKey}`,
+  /** Drive preview/embed URL */
+  previewUrl: (fileId: string) =>
+    `https://drive.google.com/file/d/${fileId}/preview`,
 };
 
 export interface DriveFile {
@@ -40,34 +47,99 @@ export interface DriveFile {
   createdTime?: string;
 }
 
+export interface DrivePhoto {
+  id: string;
+  name: string;
+  mimeType?: string;
+  thumbnail: string;
+  fullSrc: string;
+  alt: string;
+  createdTime?: string;
+  size?: string;
+}
+
+export interface DriveVideo {
+  id: string;
+  name: string;
+  mimeType?: string;
+  thumbnail: string;
+  streamUrl: string;
+  downloadUrl: string;
+  alt: string;
+  createdTime?: string;
+  size?: string;
+  duration?: string;
+}
+
 /**
- * Fetch image files from a Google Drive folder.
- * Returns empty array if API key is missing or folder is empty.
+ * Fetch photos from the internal API route.
+ * Auto-refreshes from Google Drive on each call.
  */
-export async function fetchDriveImages(
-  folderId: string = driveConfig.photoFolderId
-): Promise<DriveFile[]> {
-  const apiKey = driveConfig.apiKey;
-  if (!apiKey) {
-    console.warn("[Drive] No API key set — using fallback images");
-    return [];
-  }
-
+export async function fetchPhotos(): Promise<DrivePhoto[]> {
   try {
-    const res = await fetch(driveConfig.listFilesUrl(folderId, apiKey), {
-      next: { revalidate: 60 }, // ISR: revalidate every 60s
-    });
-
+    const res = await fetch(driveConfig.photosEndpoint);
     if (!res.ok) {
-      console.error("[Drive] API error:", res.status, await res.text());
+      console.error("[Drive] Photos fetch error:", res.status);
       return [];
     }
+    const data = await res.json();
+    return data.files || [];
+  } catch (err) {
+    console.error("[Drive] Photos fetch failed:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch videos from the internal API route.
+ * Auto-refreshes from Google Drive on each call.
+ */
+export async function fetchVideos(): Promise<DriveVideo[]> {
+  try {
+    const res = await fetch(driveConfig.videosEndpoint);
+    if (!res.ok) {
+      console.error("[Drive] Videos fetch error:", res.status);
+      return [];
+    }
+    const data = await res.json();
+    return data.files || [];
+  } catch (err) {
+    console.error("[Drive] Videos fetch failed:", err);
+    return [];
+  }
+}
+
+/**
+ * Upload files to Google Drive through the internal API route.
+ * Files are auto-sorted into Photos/Videos folders by MIME type.
+ */
+export async function uploadFiles(
+  files: File[],
+  password: string,
+  onProgress?: (fileName: string, progress: number) => void
+): Promise<{ success: boolean; results: any[] }> {
+  try {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+
+    const res = await fetch(driveConfig.uploadEndpoint, {
+      method: "POST",
+      headers: {
+        "X-Upload-Password": password,
+      },
+      body: formData,
+    });
 
     const data = await res.json();
-    return (data.files || []) as DriveFile[];
+
+    if (!res.ok) {
+      return { success: false, results: [{ error: data.error }] };
+    }
+
+    return { success: true, results: data.results || [] };
   } catch (err) {
-    console.error("[Drive] Fetch failed:", err);
-    return [];
+    console.error("[Drive] Upload failed:", err);
+    return { success: false, results: [{ error: String(err) }] };
   }
 }
 
@@ -75,10 +147,10 @@ export async function fetchDriveImages(
  * Convert Drive files to the format expected by InfiniteGallery.
  */
 export function driveFilesToGalleryImages(
-  files: DriveFile[]
+  files: DrivePhoto[]
 ): { src: string; alt: string }[] {
   return files.map((f) => ({
-    src: driveConfig.thumbnailUrl(f.id),
-    alt: f.name.replace(/\.\w+$/, ""), // Strip extension for alt text
+    src: f.thumbnail || driveConfig.thumbnailUrl(f.id),
+    alt: f.alt || f.name.replace(/\.\w+$/, ""),
   }));
 }
