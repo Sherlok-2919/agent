@@ -1,16 +1,22 @@
 // ============================================
-//  GOOGLE DRIVE CONFIG — Internal API Integration
-//  Now supports game-based subfolder sorting
+//  GOOGLE DRIVE CONFIG — Backend API Integration
+//  All Drive calls go through the Express backend on Render.
+//  No API keys stored in the frontend.
 // ============================================
 
 /**
- * All Drive operations go through Next.js internal API routes:
- *   /api/drive/photos  — list photos (supports ?game=all|valorant|etc)
- *   /api/drive/videos  — list videos (supports ?game=all|valorant|etc)
- *   /api/drive/upload  — upload files (accepts game field in FormData)
+ * All Drive operations go through the Express backend (Render):
+ *   /api/photos  — list photos (supports ?game=all|valorant|etc)
+ *   /api/videos  — list videos (supports ?game=all|valorant|etc)
+ *   /api/upload  — upload files to Google Drive
+ *   /api/auth    — validate upload password
  *
- * No external backend needed — the API key is used server-side only.
+ * Set NEXT_PUBLIC_BACKEND_URL in .env.local to the Render URL.
+ * Falls back to Next.js internal routes if not set (local dev).
  */
+
+/** Render backend URL — set in .env.local */
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 export const driveConfig = {
   /** Root shared folder: AGENT */
@@ -22,10 +28,11 @@ export const driveConfig = {
   /** Video subfolder inside AGENT */
   videoFolderId: "18z7X9jm9m8a0-wc7ukqY15VTzcYBvYaM",
 
-  /** Internal API endpoints */
-  photosEndpoint: "/api/drive/photos",
-  videosEndpoint: "/api/drive/videos",
-  uploadEndpoint: "/api/drive/upload",
+  /** All endpoints — routed to Render backend (or Next.js fallback) */
+  photosEndpoint: BACKEND_URL ? `${BACKEND_URL}/api/photos` : "/api/drive/photos",
+  videosEndpoint: BACKEND_URL ? `${BACKEND_URL}/api/videos` : "/api/drive/videos",
+  uploadEndpoint: BACKEND_URL ? `${BACKEND_URL}/api/upload` : "/api/drive/upload",
+  authEndpoint: BACKEND_URL ? `${BACKEND_URL}/api/auth` : "/api/drive/auth",
 
   /** Build a direct thumbnail URL from a Drive file ID */
   thumbnailUrl: (fileId: string, size = 600) =>

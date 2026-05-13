@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { getGameById, GENERAL_GAME } from "@/data/games";
+import { driveConfig } from "@/lib/drive";
 
 interface FileItem {
   file: File;
@@ -28,7 +29,7 @@ export function LoginCard({ onLogin }: { onLogin: (password: string) => void }) 
     setChecking(true);
 
     try {
-      const res = await fetch("/api/drive/auth", {
+      const res = await fetch(driveConfig.authEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
