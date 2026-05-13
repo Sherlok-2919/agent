@@ -106,8 +106,22 @@ const upload = multer({
   },
 });
 
-// ---------- Google Drive Auth (Service Account for uploads) ----------
+// ---------- Google Drive Auth (OAuth2 for uploads) ----------
+// OAuth2 uses YOUR personal Google account's storage quota.
+// Service accounts have 0 quota and cannot upload files.
 function getDriveClient() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+  // Prefer OAuth2 (personal account with storage quota)
+  if (clientId && clientSecret && refreshToken) {
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2.setCredentials({ refresh_token: refreshToken });
+    return google.drive({ version: "v3", auth: oauth2 });
+  }
+
+  // Fallback: Service Account (may fail with storage quota error)
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY;
 
@@ -115,14 +129,12 @@ function getDriveClient() {
     return null;
   }
 
+  console.warn("[⚠ Auth] Using Service Account — uploads may fail due to storage quota limits.");
   const auth = new google.auth.JWT(
     email,
     null,
     key.replace(/\\n/g, "\n"),
-    // 🔒 SECURITY: Only `drive.file` scope — service account can ONLY
-    // access files/folders it has explicitly created or been shared on.
-    // It CANNOT browse, list, or modify any other files in the Drive.
-    ["https://www.googleapis.com/auth/drive.file"]
+    ["https://www.googleapis.com/auth/drive"]
   );
 
   return google.drive({ version: "v3", auth });
@@ -623,6 +635,7 @@ app.post("/api/upload", upload.array("files", 10), async (req, res) => {
             body: fs.createReadStream(file.path),
           },
           fields: "id, name, mimeType, webViewLink",
+          supportsAllDrives: true,
         });
 
         // Make the file publicly viewable
@@ -632,6 +645,7 @@ app.post("/api/upload", upload.array("files", 10), async (req, res) => {
             role: "reader",
             type: "anyone",
           },
+          supportsAllDrives: true,
         });
 
         results.push({
