@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
+import {
+  PHOTO_FOLDER_ID,
+  API_KEY,
+  getSecurityStatus,
+} from "@/lib/drive-security";
 
 /**
  * GET /api/drive/health
  * Health check endpoint — verifies Google Drive API connectivity.
+ * 🔒 Now includes security confinement status.
  */
-
-const API_KEY = process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
-const PHOTO_FOLDER_ID = process.env.GOOGLE_DRIVE_PHOTO_FOLDER_ID || "1P-kiu4d1vV-XDjku8EwuAO-0-n06pAmp";
 
 export async function GET() {
   const status: Record<string, any> = {
@@ -14,6 +17,7 @@ export async function GET() {
     timestamp: new Date().toISOString(),
     apiKeyConfigured: !!API_KEY,
     photoFolderId: PHOTO_FOLDER_ID,
+    security: getSecurityStatus(),
   };
 
   if (!API_KEY) {

@@ -1,4 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  PHOTO_FOLDER_ID,
+  VIDEO_FOLDER_ID,
+  API_KEY,
+  UPLOAD_PASSWORD,
+  FOLDER_MIME,
+  isAllowedFolder,
+  isAllowedRootFolder,
+  registerSubfolder,
+  sanitizeGameName,
+} from "@/lib/drive-security";
 
 /**
  * POST /api/drive/upload
@@ -6,13 +17,11 @@ import { NextRequest, NextResponse } from "next/server";
  * Files are sorted into game-specific subfolders based on the `game` field.
  * If no game subfolder exists, it's created automatically.
  * Requires X-Upload-Password header for auth.
+ *
+ * 🔒 SECURITY: All uploads are confined to the AGENT shared folder.
+ *    Files can ONLY be placed in Photo/Video root folders or their game subfolders.
+ *    No files or folders can be created outside the AGENT boundary.
  */
-
-const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD || "agent2026";
-const API_KEY = process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
-const PHOTO_FOLDER_ID = process.env.GOOGLE_DRIVE_PHOTO_FOLDER_ID || "1P-kiu4d1vV-XDjku8EwuAO-0-n06pAmp";
-const VIDEO_FOLDER_ID = process.env.GOOGLE_DRIVE_VIDEO_FOLDER_ID || "18z7X9jm9m8a0-wc7ukqY15VTzcYBvYaM";
-const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 function isImage(mimeType: string) {
   return mimeType.startsWith("image/");
@@ -29,6 +38,9 @@ const subfolderCache: Record<string, string> = {};
  * Find or create a game subfolder inside a parent folder.
  * Uses Google Drive API key for read, but creating folders requires
  * appropriate permissions. Falls back to parent folder if creation fails.
+ *
+ * 🔒 SECURITY: Parent folder MUST be a whitelisted root folder.
+ *    Created subfolders are registered in the allowed set.
  */
 async function getOrCreateGameFolder(
   parentFolderId: string,
@@ -40,13 +52,20 @@ async function getOrCreateGameFolder(
     return parentFolderId;
   }
 
+  // 🔒 SECURITY: Only create subfolders inside root AGENT folders
+  if (!isAllowedRootFolder(parentFolderId)) {
+    console.error(`[🔒 Security] BLOCKED: Cannot create subfolder in non-root folder ${parentFolderId}`);
+    return parentFolderId;
+  }
+
   const cacheKey = `${mediaType}:${gameName.toLowerCase()}`;
   if (subfolderCache[cacheKey]) {
     return subfolderCache[cacheKey];
   }
 
-  // Try to find existing subfolder
-  const searchQuery = `'${parentFolderId}' in parents and mimeType='${FOLDER_MIME}' and name='${gameName}' and trashed=false`;
+  // Try to find existing subfolder (name sanitized for query safety)
+  const safeName = sanitizeGameName(gameName);
+  const searchQuery = `'${parentFolderId}' in parents and mimeType='${FOLDER_MIME}' and name='${safeName}' and trashed=false`;
   const searchUrl = new URL("https://www.googleapis.com/drive/v3/files");
   searchUrl.searchParams.set("q", searchQuery);
   searchUrl.searchParams.set("fields", "files(id,name)");
@@ -57,8 +76,10 @@ async function getOrCreateGameFolder(
     if (searchRes.ok) {
       const searchData = await searchRes.json();
       if (searchData.files && searchData.files.length > 0) {
-        subfolderCache[cacheKey] = searchData.files[0].id;
-        return searchData.files[0].id;
+        const folderId = searchData.files[0].id;
+        subfolderCache[cacheKey] = folderId;
+        registerSubfolder(folderId); // 🔒 Register as allowed
+        return folderId;
       }
     }
   } catch (err) {
@@ -73,7 +94,7 @@ async function getOrCreateGameFolder(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: gameName,
+          name: safeName,
           mimeType: FOLDER_MIME,
           parents: [parentFolderId],
         }),
@@ -83,6 +104,7 @@ async function getOrCreateGameFolder(
     if (createRes.ok) {
       const createData = await createRes.json();
       subfolderCache[cacheKey] = createData.id;
+      registerSubfolder(createData.id); // 🔒 Register as allowed
       console.log(`[Upload] Created subfolder: ${gameName} (${createData.id})`);
       return createData.id;
     } else {
@@ -97,8 +119,14 @@ async function getOrCreateGameFolder(
 }
 
 export async function POST(req: NextRequest) {
-  // Auth check
+  // Auth check — REQUIRED, no fallback
   const password = req.headers.get("X-Upload-Password");
+  if (!UPLOAD_PASSWORD) {
+    return NextResponse.json(
+      { error: "Uploads not configured" },
+      { status: 503 }
+    );
+  }
   if (password !== UPLOAD_PASSWORD) {
     return NextResponse.json(
       { error: "Invalid password" },
@@ -116,7 +144,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const files = formData.getAll("files") as File[];
-    const game = (formData.get("game") as string) || "general";
+    const game = sanitizeGameName(formData.get("game") as string);
 
     if (!files || files.length === 0) {
       return NextResponse.json(
@@ -135,12 +163,34 @@ export async function POST(req: NextRequest) {
         const mediaType = isVideoFile ? "videos" : "photos";
         const fileType = isVideoFile ? "video" : "photo";
 
-        // Get or create game-specific subfolder
+        // 🔒 SECURITY: Verify the parent is a whitelisted root folder
+        if (!isAllowedRootFolder(parentFolderId)) {
+          console.error(`[🔒 Security] BLOCKED: Upload to unauthorized root folder ${parentFolderId}`);
+          results.push({
+            success: false,
+            fileName: file.name,
+            error: "Upload target folder is not authorized",
+          });
+          continue;
+        }
+
+        // Get or create game-specific subfolder (security-checked inside)
         const targetFolderId = await getOrCreateGameFolder(
           parentFolderId,
           game,
           mediaType as "photos" | "videos"
         );
+
+        // 🔒 SECURITY: Final check — target must be in allowed set
+        if (!isAllowedFolder(targetFolderId)) {
+          console.error(`[🔒 Security] BLOCKED: Upload to unauthorized folder ${targetFolderId}`);
+          results.push({
+            success: false,
+            fileName: file.name,
+            error: "Upload target folder is not authorized",
+          });
+          continue;
+        }
 
         // Prepare multipart upload metadata
         const metadata = {

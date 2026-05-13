@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
+import {
+  PHOTO_FOLDER_ID,
+  API_KEY,
+  FOLDER_MIME,
+  isAllowedFolder,
+  isAllowedRootFolder,
+  registerSubfolder,
+} from "@/lib/drive-security";
 
 /**
  * GET /api/drive/photos
  * Lists image files from the Google Drive "Photos" folder.
  * Supports game-based subfolders: ?game=valorant or ?game=all (default).
  * Uses the API key from env (server-side only).
+ *
+ * 🔒 SECURITY: All folder access is validated against the AGENT whitelist.
  */
-
-const PHOTO_FOLDER_ID = process.env.GOOGLE_DRIVE_PHOTO_FOLDER_ID || "1P-kiu4d1vV-XDjku8EwuAO-0-n06pAmp";
-const API_KEY = process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
 
 const IMAGE_MIME_QUERY = [
   "mimeType='image/jpeg'",
@@ -19,17 +26,23 @@ const IMAGE_MIME_QUERY = [
   "mimeType='image/svg+xml'",
 ].join(" or ");
 
-const FOLDER_MIME = "application/vnd.google-apps.folder";
-
 /** Cache subfolder IDs for the lifetime of the serverless function */
 const subfolderCache: Record<string, string> = {};
 
 /**
  * Find all game subfolders inside the Photos parent folder.
  * Returns a map of { folderName: folderId }.
+ *
+ * 🔒 Only scans the whitelisted PHOTO_FOLDER_ID.
  */
 async function listGameSubfolders(): Promise<Record<string, string>> {
   if (Object.keys(subfolderCache).length > 0) return subfolderCache;
+
+  // 🔒 Verify parent is a root AGENT folder
+  if (!isAllowedRootFolder(PHOTO_FOLDER_ID)) {
+    console.error("[🔒 Security] BLOCKED: PHOTO_FOLDER_ID is not in allowed set");
+    return {};
+  }
 
   const query = `'${PHOTO_FOLDER_ID}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`;
   const url = new URL("https://www.googleapis.com/drive/v3/files");
@@ -44,17 +57,26 @@ async function listGameSubfolders(): Promise<Record<string, string>> {
   const data = await res.json();
   for (const f of data.files || []) {
     subfolderCache[f.name.toLowerCase()] = f.id;
+    registerSubfolder(f.id); // 🔒 Register as allowed
   }
   return subfolderCache;
 }
 
 /**
  * List image files from a specific folder ID.
+ *
+ * 🔒 Folder ID must be in the allowed set.
  */
 async function listImagesFromFolder(
   folderId: string,
   gameName: string
 ): Promise<any[]> {
+  // 🔒 Verify folder is allowed
+  if (!isAllowedFolder(folderId)) {
+    console.error(`[🔒 Security] BLOCKED: Cannot list images from unauthorized folder ${folderId}`);
+    return [];
+  }
+
   const query = `'${folderId}' in parents and (${IMAGE_MIME_QUERY}) and trashed=false`;
   const fields = "files(id,name,mimeType,thumbnailLink,createdTime,size,imageMediaMetadata)";
 

@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
+import {
+  VIDEO_FOLDER_ID,
+  API_KEY,
+  FOLDER_MIME,
+  isAllowedFolder,
+  isAllowedRootFolder,
+  registerSubfolder,
+} from "@/lib/drive-security";
 
 /**
  * GET /api/drive/videos
  * Lists video files from the Google Drive "Videos" folder.
  * Supports game-based subfolders: ?game=valorant or ?game=all (default).
  * Uses the API key from env (server-side only).
+ *
+ * 🔒 SECURITY: All folder access is validated against the AGENT whitelist.
  */
-
-const VIDEO_FOLDER_ID = process.env.GOOGLE_DRIVE_VIDEO_FOLDER_ID || "18z7X9jm9m8a0-wc7ukqY15VTzcYBvYaM";
-const API_KEY = process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "";
 
 const VIDEO_MIME_QUERY = [
   "mimeType='video/mp4'",
@@ -19,16 +26,22 @@ const VIDEO_MIME_QUERY = [
   "mimeType='video/mpeg'",
 ].join(" or ");
 
-const FOLDER_MIME = "application/vnd.google-apps.folder";
-
 /** Cache subfolder IDs for the lifetime of the serverless function */
 const subfolderCache: Record<string, string> = {};
 
 /**
  * Find all game subfolders inside the Videos parent folder.
+ *
+ * 🔒 Only scans the whitelisted VIDEO_FOLDER_ID.
  */
 async function listGameSubfolders(): Promise<Record<string, string>> {
   if (Object.keys(subfolderCache).length > 0) return subfolderCache;
+
+  // 🔒 Verify parent is a root AGENT folder
+  if (!isAllowedRootFolder(VIDEO_FOLDER_ID)) {
+    console.error("[🔒 Security] BLOCKED: VIDEO_FOLDER_ID is not in allowed set");
+    return {};
+  }
 
   const query = `'${VIDEO_FOLDER_ID}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`;
   const url = new URL("https://www.googleapis.com/drive/v3/files");
@@ -43,17 +56,26 @@ async function listGameSubfolders(): Promise<Record<string, string>> {
   const data = await res.json();
   for (const f of data.files || []) {
     subfolderCache[f.name.toLowerCase()] = f.id;
+    registerSubfolder(f.id); // 🔒 Register as allowed
   }
   return subfolderCache;
 }
 
 /**
  * List video files from a specific folder ID.
+ *
+ * 🔒 Folder ID must be in the allowed set.
  */
 async function listVideosFromFolder(
   folderId: string,
   gameName: string
 ): Promise<any[]> {
+  // 🔒 Verify folder is allowed
+  if (!isAllowedFolder(folderId)) {
+    console.error(`[🔒 Security] BLOCKED: Cannot list videos from unauthorized folder ${folderId}`);
+    return [];
+  }
+
   const query = `'${folderId}' in parents and (${VIDEO_MIME_QUERY}) and trashed=false`;
   const fields = "files(id,name,mimeType,thumbnailLink,createdTime,size,videoMediaMetadata)";
 
