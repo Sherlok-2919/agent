@@ -14,10 +14,7 @@ export default function HeroSection() {
 
       {/* Hero Content */}
       <div className="relative z-[2] text-center px-5">
-        <div className="badge-val mb-6 animate-fade-in-up">
-          <span className="w-1.5 h-1.5 bg-val-teal rounded-full animate-pulse-glow shadow-[0_0_8px_rgba(23,222,166,0.6)]" />
-          SYSTEM ONLINE
-        </div>
+        
 
         <h1 className="font-heading text-[clamp(2.8rem,8vw,6.5rem)] font-black leading-none tracking-wider mb-5 opacity-0 animate-fade-in-up-delay-1">
           <span className="bg-gradient-to-br from-val-red via-val-cream to-val-red bg-[length:200%_200%] bg-clip-text text-transparent animate-gradient-shift">
@@ -48,10 +45,7 @@ export default function HeroSection() {
             "fade-in-up 1s ease 0.8s forwards, float 3s ease-in-out infinite",
         }}
       >
-        <div className="w-px h-10 bg-gradient-to-b from-val-red to-transparent" />
-        <span className="font-mono text-[0.65rem] text-gray-600 tracking-[0.2em]">
-          SCROLL
-        </span>
+        
       </div>
     </section>
   );
