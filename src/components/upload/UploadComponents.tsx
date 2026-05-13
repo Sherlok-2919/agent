@@ -16,15 +16,36 @@ interface FileItem {
 export function LoginCard({ onLogin }: { onLogin: (password: string) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password.trim()) {
       setError("Enter the squad password");
       return;
     }
     setError("");
-    onLogin(password);
+    setChecking(true);
+
+    try {
+      const res = await fetch("/api/drive/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.valid) {
+        setError(data.error || "Wrong password — access denied");
+        setChecking(false);
+        return;
+      }
+
+      onLogin(password);
+    } catch {
+      setError("Connection error — try again");
+      setChecking(false);
+    }
   };
 
   return (
@@ -41,13 +62,18 @@ export function LoginCard({ onLogin }: { onLogin: (password: string) => void }) 
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Squad password..."
-          className="w-full px-5 py-3 mb-4 bg-dark-bg border border-glass-border rounded-lg text-val-cream font-body text-sm outline-none focus:border-val-red/50 focus:shadow-[0_0_20px_rgba(255,70,85,0.1)] transition-all duration-300"
+          disabled={checking}
+          className="w-full px-5 py-3 mb-4 bg-dark-bg border border-glass-border rounded-lg text-val-cream font-body text-sm outline-none focus:border-val-red/50 focus:shadow-[0_0_20px_rgba(255,70,85,0.1)] transition-all duration-300 disabled:opacity-50"
         />
         {error && (
           <p className="text-val-red text-xs mb-3 font-mono">{error}</p>
         )}
-        <button type="submit" className="btn-val-primary w-full justify-center py-3.5 text-xs">
-          UNLOCK VAULT
+        <button type="submit" className="btn-val-primary w-full justify-center py-3.5 text-xs" disabled={checking}>
+          {checking ? (
+            <><span className="animate-spin inline-block mr-1.5">↻</span> VERIFYING...</>
+          ) : (
+            "UNLOCK VAULT"
+          )}
         </button>
       </form>
       <p className="mt-5 font-mono text-[0.7rem] text-gray-600 flex items-center justify-center gap-1.5 relative">
