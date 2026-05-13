@@ -83,43 +83,35 @@ export default function UploadPage() {
     });
 
     try {
+      // Files are uploaded one at a time to avoid body size limits (413 errors).
+      // The onFileComplete callback updates each file's UI in real-time.
       const result = await uploadFiles(
         pendingFiles.map((f) => f.file),
         password,
-        selectedGame
-      );
-
-      if (result.success && result.results) {
-        result.results.forEach((r, i) => {
-          if (i < pendingFiles.length) {
-            if (r.success) {
-              updateFile(pendingFiles[i].id, {
+        selectedGame,
+        (index, fileResult) => {
+          // Update each file as it completes
+          if (index < pendingFiles.length) {
+            if (fileResult.success) {
+              updateFile(pendingFiles[index].id, {
                 status: "done",
                 progress: 100,
-                driveId: r.driveId,
+                driveId: fileResult.driveId,
               });
             } else {
-              updateFile(pendingFiles[i].id, {
+              updateFile(pendingFiles[index].id, {
                 status: "error",
-                error: r.error || "Upload failed",
+                error: fileResult.error || "Upload failed",
               });
             }
           }
-        });
-
-        const successCount = result.results.filter((r) => r.success).length;
-        if (successCount === pendingFiles.length) {
-          setCompletedCount(successCount);
-          setTimeout(() => setUploadComplete(true), 1500);
         }
-      } else {
-        // All failed
-        pendingFiles.forEach((f) => {
-          updateFile(f.id, {
-            status: "error",
-            error: result.results?.[0]?.error || "Upload failed",
-          });
-        });
+      );
+
+      const successCount = result.results.filter((r) => r.success).length;
+      if (successCount > 0) {
+        setCompletedCount(successCount);
+        setTimeout(() => setUploadComplete(true), 1500);
       }
     } catch (err) {
       pendingFiles.forEach((f) => {

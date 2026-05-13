@@ -174,19 +174,18 @@ export async function fetchVideosWithStats(
 }
 
 /**
- * Upload files to Google Drive through the internal API route.
+ * Upload a single file to Google Drive through the internal API route.
  * Files are auto-sorted into Photos/Videos folders by MIME type,
  * then further into game-specific subfolders.
  */
-export async function uploadFiles(
-  files: File[],
+async function uploadSingleFile(
+  file: File,
   password: string,
-  game: string = "general",
-  onProgress?: (fileName: string, progress: number) => void
-): Promise<{ success: boolean; results: any[] }> {
+  game: string
+): Promise<{ success: boolean; fileName: string; driveId?: string; error?: string }> {
   try {
     const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
+    formData.append("files", file);
     formData.append("game", game);
 
     const res = await fetch(driveConfig.uploadEndpoint, {
@@ -200,14 +199,46 @@ export async function uploadFiles(
     const data = await res.json();
 
     if (!res.ok) {
-      return { success: false, results: [{ error: data.error }] };
+      return { success: false, fileName: file.name, error: data.error || `Upload failed: ${res.status}` };
     }
 
-    return { success: true, results: data.results || [] };
+    const result = data.results?.[0];
+    return {
+      success: result?.success ?? false,
+      fileName: file.name,
+      driveId: result?.driveId,
+      error: result?.error,
+    };
   } catch (err) {
-    console.error("[Drive] Upload failed:", err);
-    return { success: false, results: [{ error: String(err) }] };
+    console.error(`[Drive] Upload failed for ${file.name}:`, err);
+    return { success: false, fileName: file.name, error: String(err) };
   }
+}
+
+/**
+ * Upload files to Google Drive — one at a time to avoid body size limits.
+ * Each file is uploaded in a separate request for reliability.
+ */
+export async function uploadFiles(
+  files: File[],
+  password: string,
+  game: string = "general",
+  onFileComplete?: (index: number, result: { success: boolean; driveId?: string; error?: string }) => void
+): Promise<{ success: boolean; results: any[] }> {
+  const results: any[] = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const result = await uploadSingleFile(files[i], password, game);
+    results.push(result);
+
+    // Notify per-file completion so UI can update live
+    if (onFileComplete) {
+      onFileComplete(i, result);
+    }
+  }
+
+  const allSuccess = results.every((r) => r.success);
+  return { success: allSuccess, results };
 }
 
 /**
