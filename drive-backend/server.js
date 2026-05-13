@@ -54,12 +54,26 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
   .split(",")
   .map((o) => o.trim());
 
+// Handle preflight OPTIONS explicitly (Express 5 compatibility)
+app.options("*", (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Upload-Password");
+    res.set("Access-Control-Max-Age", "86400");
+    return res.sendStatus(204);
+  }
+  return res.sendStatus(403);
+});
+
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, Postman, etc.)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(", ")}`);
       callback(new Error("Not allowed by CORS"));
     },
     methods: ["GET", "POST", "OPTIONS"],
