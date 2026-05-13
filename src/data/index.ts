@@ -13,3 +13,6 @@ export type { Photo, PhotoAlbum } from "./photos";
 
 export { navLinks, features, stats, siteMeta, uploadConfig } from "./site";
 export type { NavLink, Feature, Stat } from "./site";
+
+export { GAMES, GAME_CATEGORIES, GENERAL_GAME, detectGameFromFilename, getGameById, getGamesByCategory } from "./games";
+export type { GameInfo, GameCategory } from "./games";

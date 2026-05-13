@@ -1,12 +1,13 @@
 // ============================================
 //  GOOGLE DRIVE CONFIG — Internal API Integration
+//  Now supports game-based subfolder sorting
 // ============================================
 
 /**
- * All Drive operations now go through Next.js internal API routes:
- *   /api/drive/photos  — list photos from Google Drive
- *   /api/drive/videos  — list videos from Google Drive
- *   /api/drive/upload  — upload files to Google Drive
+ * All Drive operations go through Next.js internal API routes:
+ *   /api/drive/photos  — list photos (supports ?game=all|valorant|etc)
+ *   /api/drive/videos  — list videos (supports ?game=all|valorant|etc)
+ *   /api/drive/upload  — upload files (accepts game field in FormData)
  *
  * No external backend needed — the API key is used server-side only.
  */
@@ -56,6 +57,8 @@ export interface DrivePhoto {
   alt: string;
   createdTime?: string;
   size?: string;
+  /** Game tag — e.g. "valorant", "bgmi", "general" */
+  game?: string;
 }
 
 export interface DriveVideo {
@@ -69,15 +72,29 @@ export interface DriveVideo {
   createdTime?: string;
   size?: string;
   duration?: string;
+  /** Game tag — e.g. "valorant", "bgmi", "general" */
+  game?: string;
+}
+
+export interface DriveListResponse<T> {
+  files: T[];
+  count: number;
+  source: string;
+  gameFilter?: string;
+  gameStats?: Record<string, number>;
+  availableGames?: string[];
 }
 
 /**
  * Fetch photos from the internal API route.
- * Auto-refreshes from Google Drive on each call.
+ * Optionally filter by game. Default: all photos.
  */
-export async function fetchPhotos(): Promise<DrivePhoto[]> {
+export async function fetchPhotos(game?: string): Promise<DrivePhoto[]> {
   try {
-    const res = await fetch(driveConfig.photosEndpoint);
+    const url = game && game !== "all"
+      ? `${driveConfig.photosEndpoint}?game=${encodeURIComponent(game)}`
+      : driveConfig.photosEndpoint;
+    const res = await fetch(url);
     if (!res.ok) {
       console.error("[Drive] Photos fetch error:", res.status);
       return [];
@@ -91,12 +108,37 @@ export async function fetchPhotos(): Promise<DrivePhoto[]> {
 }
 
 /**
- * Fetch videos from the internal API route.
- * Auto-refreshes from Google Drive on each call.
+ * Fetch photos with full metadata (including game stats).
  */
-export async function fetchVideos(): Promise<DriveVideo[]> {
+export async function fetchPhotosWithStats(
+  game?: string
+): Promise<DriveListResponse<DrivePhoto>> {
   try {
-    const res = await fetch(driveConfig.videosEndpoint);
+    const url = game && game !== "all"
+      ? `${driveConfig.photosEndpoint}?game=${encodeURIComponent(game)}`
+      : driveConfig.photosEndpoint;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error("[Drive] Photos fetch error:", res.status);
+      return { files: [], count: 0, source: "error" };
+    }
+    return await res.json();
+  } catch (err) {
+    console.error("[Drive] Photos fetch failed:", err);
+    return { files: [], count: 0, source: "error" };
+  }
+}
+
+/**
+ * Fetch videos from the internal API route.
+ * Optionally filter by game. Default: all videos.
+ */
+export async function fetchVideos(game?: string): Promise<DriveVideo[]> {
+  try {
+    const url = game && game !== "all"
+      ? `${driveConfig.videosEndpoint}?game=${encodeURIComponent(game)}`
+      : driveConfig.videosEndpoint;
+    const res = await fetch(url);
     if (!res.ok) {
       console.error("[Drive] Videos fetch error:", res.status);
       return [];
@@ -110,17 +152,42 @@ export async function fetchVideos(): Promise<DriveVideo[]> {
 }
 
 /**
+ * Fetch videos with full metadata (including game stats).
+ */
+export async function fetchVideosWithStats(
+  game?: string
+): Promise<DriveListResponse<DriveVideo>> {
+  try {
+    const url = game && game !== "all"
+      ? `${driveConfig.videosEndpoint}?game=${encodeURIComponent(game)}`
+      : driveConfig.videosEndpoint;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error("[Drive] Videos fetch error:", res.status);
+      return { files: [], count: 0, source: "error" };
+    }
+    return await res.json();
+  } catch (err) {
+    console.error("[Drive] Videos fetch failed:", err);
+    return { files: [], count: 0, source: "error" };
+  }
+}
+
+/**
  * Upload files to Google Drive through the internal API route.
- * Files are auto-sorted into Photos/Videos folders by MIME type.
+ * Files are auto-sorted into Photos/Videos folders by MIME type,
+ * then further into game-specific subfolders.
  */
 export async function uploadFiles(
   files: File[],
   password: string,
+  game: string = "general",
   onProgress?: (fileName: string, progress: number) => void
 ): Promise<{ success: boolean; results: any[] }> {
   try {
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
+    formData.append("game", game);
 
     const res = await fetch(driveConfig.uploadEndpoint, {
       method: "POST",

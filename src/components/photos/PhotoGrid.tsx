@@ -1,24 +1,80 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
-import { useDriveFiles } from "@/lib/useDriveFiles";
-import { fetchPhotos } from "@/lib/drive";
-import type { DrivePhoto } from "@/lib/drive";
+import { fetchPhotosWithStats } from "@/lib/drive";
+import type { DrivePhoto, DriveListResponse } from "@/lib/drive";
+import { getGameById, GENERAL_GAME } from "@/data/games";
+import GameFilterTabs from "@/components/ui/GameFilterTabs";
 
 export default function PhotoGrid() {
-  const {
-    files: photos,
-    loading,
-    refreshing,
-    refresh,
-    lastRefreshed,
-    error,
-  } = useDriveFiles<DrivePhoto>({
-    fetchFn: fetchPhotos,
-    interval: 30000, // Auto-refresh every 30 seconds
-  });
+  const [photos, setPhotos] = useState<DrivePhoto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  // Game filter state
+  const [activeGame, setActiveGame] = useState("all");
+  const [gameStats, setGameStats] = useState<Record<string, number>>({});
+  const [totalCount, setTotalCount] = useState(0);
 
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+
+  const doFetch = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      // Always fetch "all" first to get stats, then filter locally
+      const data: DriveListResponse<DrivePhoto> = await fetchPhotosWithStats("all");
+      const allFiles = data.files || [];
+
+      // Set stats from all files
+      const stats: Record<string, number> = {};
+      for (const f of allFiles) {
+        const game = f.game || "general";
+        stats[game] = (stats[game] || 0) + 1;
+      }
+      setGameStats(stats);
+      setTotalCount(allFiles.length);
+
+      // Apply local filter
+      if (activeGame === "all") {
+        setPhotos(allFiles);
+      } else {
+        setPhotos(allFiles.filter((f) => (f.game || "general") === activeGame));
+      }
+
+      setError(null);
+      setLastRefreshed(new Date());
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [activeGame]);
+
+  // Initial fetch
+  useEffect(() => {
+    doFetch();
+  }, [doFetch]);
+
+  // Auto-refresh polling
+  useEffect(() => {
+    const timer = setInterval(() => doFetch(true), 30000);
+    return () => clearInterval(timer);
+  }, [doFetch]);
+
+  // Re-filter when activeGame changes (local filtering from cached data)
+  const handleGameChange = useCallback((game: string) => {
+    setActiveGame(game);
+    setLightbox(null);
+    setLoadedImages(new Set());
+  }, []);
 
   const handleImageLoad = (id: string) => {
     setLoadedImages((prev) => new Set(prev).add(id));
@@ -54,13 +110,26 @@ export default function PhotoGrid() {
           BROWSE THE COLLECTION
         </h2>
         <p className="text-gray-500 text-base mb-6">
-          Filter by album &amp; explore every shot.
+          Filter by game &amp; explore every shot.
         </p>
+
+        {/* Game Filter Tabs */}
+        {Object.keys(gameStats).length > 0 && (
+          <div className="mb-6 flex justify-center">
+            <GameFilterTabs
+              gameStats={gameStats}
+              activeGame={activeGame}
+              onSelectGame={handleGameChange}
+              totalCount={totalCount}
+              accentColor="#17dea6"
+            />
+          </div>
+        )}
 
         {/* Refresh controls */}
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <button
-            onClick={refresh}
+            onClick={() => doFetch(true)}
             disabled={refreshing}
             className="flex items-center gap-2 px-5 py-2.5 rounded-full font-mono text-[0.7rem] tracking-wider bg-val-teal/10 border border-val-teal/20 text-val-teal hover:bg-val-teal/20 hover:border-val-teal/40 hover:shadow-[0_0_20px_rgba(23,222,166,0.15)] transition-all duration-300 cursor-pointer disabled:opacity-50"
           >
@@ -86,6 +155,9 @@ export default function PhotoGrid() {
           {photos.length > 0 && (
             <span className="px-3 py-1 bg-val-teal/10 border border-val-teal/20 rounded-full font-mono text-[0.65rem] text-val-teal">
               {photos.length} photo{photos.length !== 1 ? "s" : ""}
+              {activeGame !== "all" && (
+                <> in {(getGameById(activeGame) || GENERAL_GAME).name}</>
+              )}
             </span>
           )}
         </div>
@@ -119,7 +191,7 @@ export default function PhotoGrid() {
           </p>
           <p className="text-gray-600 text-xs max-w-md text-center">{error}</p>
           <button
-            onClick={refresh}
+            onClick={() => doFetch()}
             className="btn-val-primary text-[0.7rem] px-6 py-2 mt-2"
           >
             RETRY CONNECTION
@@ -137,91 +209,117 @@ export default function PhotoGrid() {
             </div>
           </div>
           <p className="font-heading text-lg text-gray-500 tracking-wider">
-            NO PHOTOS YET
+            {activeGame !== "all"
+              ? `NO ${(getGameById(activeGame) || GENERAL_GAME).name.toUpperCase()} PHOTOS YET`
+              : "NO PHOTOS YET"}
           </p>
           <p className="text-gray-600 text-sm max-w-md text-center">
-            Upload photos through the Upload Hub and they&apos;ll appear here
-            automatically within 30 seconds.
+            {activeGame !== "all"
+              ? `Upload ${(getGameById(activeGame) || GENERAL_GAME).name} screenshots through the Upload Hub and they'll appear here.`
+              : "Upload photos through the Upload Hub and they'll appear here automatically within 30 seconds."}
           </p>
-          <a href="/upload" className="btn-val-secondary text-[0.7rem] px-6 py-2 mt-2">
-            GO TO UPLOAD HUB
-          </a>
+          <div className="flex gap-3">
+            {activeGame !== "all" && (
+              <button
+                onClick={() => handleGameChange("all")}
+                className="btn-val-secondary text-[0.7rem] px-6 py-2"
+              >
+                VIEW ALL PHOTOS
+              </button>
+            )}
+            <a href="/upload" className="btn-val-primary text-[0.7rem] px-6 py-2">
+              GO TO UPLOAD HUB
+            </a>
+          </div>
         </div>
       )}
 
       {/* Masonry Grid */}
       {!loading && photos.length > 0 && (
         <div className="columns-1 sm:columns-2 xl:columns-3 gap-5 max-w-[1400px] mx-auto px-5 md:px-10 pb-20">
-          {photos.map((photo, i) => (
-            <div
-              key={photo.id}
-              className="break-inside-avoid mb-5 rounded-xl overflow-hidden relative cursor-pointer group"
-              style={{
-                opacity: 0,
-                animation: `fade-in-up 0.6s ease forwards`,
-                animationDelay: `${i * 80}ms`,
-              }}
-              onClick={() => setLightbox(i)}
-            >
-              {/* Card border with glow */}
-              <div className="absolute inset-0 rounded-xl border border-white/[0.06] group-hover:border-val-teal/40 transition-all duration-500 z-10 pointer-events-none" />
-              <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none shadow-[0_12px_50px_rgba(23,222,166,0.12),inset_0_0_0_1px_rgba(23,222,166,0.15)]" />
+          {photos.map((photo, i) => {
+            const gameInfo = photo.game ? (getGameById(photo.game) || (photo.game === "general" ? GENERAL_GAME : null)) : null;
+            return (
+              <div
+                key={photo.id}
+                className="break-inside-avoid mb-5 rounded-xl overflow-hidden relative cursor-pointer group"
+                style={{
+                  opacity: 0,
+                  animation: `fade-in-up 0.6s ease forwards`,
+                  animationDelay: `${i * 80}ms`,
+                }}
+                onClick={() => setLightbox(i)}
+              >
+                {/* Card border with glow */}
+                <div className="absolute inset-0 rounded-xl border border-white/[0.06] group-hover:border-val-teal/40 transition-all duration-500 z-10 pointer-events-none" />
+                <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none shadow-[0_12px_50px_rgba(23,222,166,0.12),inset_0_0_0_1px_rgba(23,222,166,0.15)]" />
 
-              {/* Image */}
-              <div className="w-full aspect-[4/3] relative overflow-hidden bg-gradient-to-br from-dark-card to-dark-bg">
-                {/* Skeleton loader */}
-                {!loadedImages.has(photo.id) && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-dark-card via-dark-bg2 to-dark-card animate-pulse" />
-                )}
-                <img
-                  src={photo.thumbnail}
-                  alt={photo.alt}
-                  loading="lazy"
-                  className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-110 ${
-                    loadedImages.has(photo.id) ? "opacity-100" : "opacity-0"
-                  }`}
-                  onLoad={() => handleImageLoad(photo.id)}
-                  onError={(e) => {
-                    const target = e.currentTarget;
-                    target.style.display = "none";
-                  }}
-                />
-                {/* Scan line effect */}
-                <div className="absolute -top-full left-0 w-full h-1/2 bg-gradient-to-b from-transparent via-val-teal/[0.04] to-transparent pointer-events-none group-hover:animate-scan-line" />
-              </div>
-
-              {/* Overlay info */}
-              <div className="absolute bottom-0 left-0 right-0 p-4 pt-12 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 z-20">
-                <h3 className="font-heading text-[0.8rem] font-bold tracking-wider mb-1 text-val-cream truncate">
-                  {photo.alt}
-                </h3>
-                <div className="flex items-center gap-2">
-                  {photo.createdTime && (
-                    <span className="text-[0.68rem] text-val-teal font-mono">
-                      {new Date(photo.createdTime).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
+                {/* Image */}
+                <div className="w-full aspect-[4/3] relative overflow-hidden bg-gradient-to-br from-dark-card to-dark-bg">
+                  {/* Skeleton loader */}
+                  {!loadedImages.has(photo.id) && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-dark-card via-dark-bg2 to-dark-card animate-pulse" />
                   )}
-                  {photo.size && (
-                    <>
-                      <span className="text-gray-600 text-[0.6rem]">•</span>
-                      <span className="text-[0.65rem] text-gray-500 font-mono">
-                        {(parseInt(photo.size) / (1024 * 1024)).toFixed(1)} MB
-                      </span>
-                    </>
-                  )}
+                  <img
+                    src={photo.thumbnail}
+                    alt={photo.alt}
+                    loading="lazy"
+                    className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-110 ${
+                      loadedImages.has(photo.id) ? "opacity-100" : "opacity-0"
+                    }`}
+                    onLoad={() => handleImageLoad(photo.id)}
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      target.style.display = "none";
+                    }}
+                  />
+                  {/* Scan line effect */}
+                  <div className="absolute -top-full left-0 w-full h-1/2 bg-gradient-to-b from-transparent via-val-teal/[0.04] to-transparent pointer-events-none group-hover:animate-scan-line" />
                 </div>
-              </div>
 
-              {/* MIME type badge */}
-              <span className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-val-teal/80 rounded font-mono text-[0.55rem] text-white uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                {photo.mimeType?.split("/")[1] || "image"}
-              </span>
-            </div>
-          ))}
+                {/* Overlay info */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 pt-12 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 z-20">
+                  <h3 className="font-heading text-[0.8rem] font-bold tracking-wider mb-1 text-val-cream truncate">
+                    {photo.alt}
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {photo.createdTime && (
+                      <span className="text-[0.68rem] text-val-teal font-mono">
+                        {new Date(photo.createdTime).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    )}
+                    {photo.size && (
+                      <>
+                        <span className="text-gray-600 text-[0.6rem]">•</span>
+                        <span className="text-[0.65rem] text-gray-500 font-mono">
+                          {(parseInt(photo.size) / (1024 * 1024)).toFixed(1)} MB
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Game badge (top-left) */}
+                {gameInfo && gameInfo.id !== "general" && (
+                  <span
+                    className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded font-mono text-[0.55rem] text-white uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20 flex items-center gap-1"
+                    style={{ background: `${gameInfo.color}cc` }}
+                  >
+                    {gameInfo.icon} {gameInfo.name}
+                  </span>
+                )}
+
+                {/* MIME type badge (top-right) */}
+                <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-val-teal/80 rounded font-mono text-[0.55rem] text-white uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                  {photo.mimeType?.split("/")[1] || "image"}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -284,7 +382,23 @@ export default function PhotoGrid() {
                 <h2 className="font-heading text-base mb-1">
                   {photos[lightbox].alt}
                 </h2>
-                <div className="flex items-center gap-3 text-sm text-gray-500">
+                <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+                  {/* Game badge */}
+                  {photos[lightbox].game && photos[lightbox].game !== "general" && (() => {
+                    const gi = getGameById(photos[lightbox].game!);
+                    return gi ? (
+                      <span
+                        className="px-2 py-0.5 rounded text-[0.65rem] font-mono border flex items-center gap-1"
+                        style={{
+                          background: `${gi.color}15`,
+                          borderColor: `${gi.color}30`,
+                          color: gi.color,
+                        }}
+                      >
+                        {gi.icon} {gi.name}
+                      </span>
+                    ) : null;
+                  })()}
                   {photos[lightbox].createdTime && (
                     <span>
                       {new Date(photos[lightbox].createdTime!).toLocaleDateString(

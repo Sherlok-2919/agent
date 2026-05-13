@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef } from "react";
-import { uploadFiles } from "@/lib/drive";
+import { getGameById, GENERAL_GAME } from "@/data/games";
 
 interface FileItem {
   file: File;
@@ -58,9 +58,16 @@ export function LoginCard({ onLogin }: { onLogin: (password: string) => void }) 
   );
 }
 
-export function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
+export function DropZone({
+  onFiles,
+  selectedGame,
+}: {
+  onFiles: (files: FileList) => void;
+  selectedGame: string;
+}) {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const gameInfo = getGameById(selectedGame) || GENERAL_GAME;
 
   return (
     <div className="max-w-[700px] w-[90%] mb-10">
@@ -82,24 +89,47 @@ export function DropZone({ onFiles }: { onFiles: (files: FileList) => void }) {
         </h3>
         <p className="text-gray-600 text-sm mb-5">or click to browse — MP4, WEBM, MOV, JPG, PNG, WEBP</p>
         <div className="flex gap-2.5 justify-center flex-wrap">
-          {["🎬 Videos → Video Folder", "📸 Photos → Photo Folder", "☁️ Auto-sorted"].map((b) => (
-            <span key={b} className="px-3.5 py-1 bg-val-red/[0.08] border border-val-red/15 rounded-full font-mono text-[0.7rem] text-gray-500">{b}</span>
-          ))}
+          {/* Game tag badge */}
+          <span
+            className="px-3.5 py-1 rounded-full font-mono text-[0.7rem] border flex items-center gap-1.5"
+            style={{
+              background: `${gameInfo.color}12`,
+              borderColor: `${gameInfo.color}30`,
+              color: gameInfo.color,
+            }}
+          >
+            {gameInfo.icon} {gameInfo.name}
+          </span>
+          <span className="px-3.5 py-1 bg-val-red/[0.08] border border-val-red/15 rounded-full font-mono text-[0.7rem] text-gray-500">
+            📸 Photos → {gameInfo.name} Folder
+          </span>
+          <span className="px-3.5 py-1 bg-val-red/[0.08] border border-val-red/15 rounded-full font-mono text-[0.7rem] text-gray-500">
+            🎬 Videos → {gameInfo.name} Folder
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-export function FileQueue({ files, onUpdate, onRemove, onUploadAll, uploading }: {
+export function FileQueue({
+  files,
+  onUpdate,
+  onRemove,
+  onUploadAll,
+  uploading,
+  selectedGame,
+}: {
   files: FileItem[];
   onUpdate: (id: string, updates: Partial<FileItem>) => void;
   onRemove: (id: string) => void;
   onUploadAll: () => void;
   uploading: boolean;
+  selectedGame: string;
 }) {
   const getIcon = (type: string) => type === "video" ? "🎬" : "📸";
   const formatSize = (b: number) => b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  const gameInfo = getGameById(selectedGame) || GENERAL_GAME;
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
   const doneCount = files.filter((f) => f.status === "done").length;
@@ -110,7 +140,7 @@ export function FileQueue({ files, onUpdate, onRemove, onUploadAll, uploading }:
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="font-heading text-base font-bold tracking-wider">Upload Queue ({files.length})</h2>
-          <div className="flex gap-3 mt-1">
+          <div className="flex gap-3 mt-1 flex-wrap">
             {pendingCount > 0 && (
               <span className="font-mono text-[0.65rem] text-gray-500">{pendingCount} pending</span>
             )}
@@ -120,6 +150,17 @@ export function FileQueue({ files, onUpdate, onRemove, onUploadAll, uploading }:
             {errorCount > 0 && (
               <span className="font-mono text-[0.65rem] text-val-red">{errorCount} failed</span>
             )}
+            {/* Game badge */}
+            <span
+              className="font-mono text-[0.65rem] px-2 py-0.5 rounded-full border flex items-center gap-1"
+              style={{
+                background: `${gameInfo.color}10`,
+                borderColor: `${gameInfo.color}25`,
+                color: gameInfo.color,
+              }}
+            >
+              {gameInfo.icon} {gameInfo.name}
+            </span>
           </div>
         </div>
         <button
@@ -154,7 +195,7 @@ export function FileQueue({ files, onUpdate, onRemove, onUploadAll, uploading }:
                 placeholder="Title..."
                 disabled={item.status !== "pending"}
               />
-              <div className="flex gap-2 items-center">
+              <div className="flex gap-2 items-center flex-wrap">
                 <span className="font-mono text-[0.68rem] text-gray-600">{formatSize(item.file.size)}</span>
                 <span className={`px-1.5 py-0.5 rounded text-[0.6rem] font-mono tracking-wider ${
                   item.type === "video"
@@ -162,6 +203,16 @@ export function FileQueue({ files, onUpdate, onRemove, onUploadAll, uploading }:
                     : "bg-val-teal/10 text-val-teal"
                 }`}>
                   {item.type === "video" ? "VIDEO" : "PHOTO"}
+                </span>
+                {/* Game tag badge */}
+                <span
+                  className="px-1.5 py-0.5 rounded text-[0.6rem] font-mono tracking-wider"
+                  style={{
+                    background: `${gameInfo.color}15`,
+                    color: gameInfo.color,
+                  }}
+                >
+                  {gameInfo.icon} {gameInfo.name.toUpperCase()}
                 </span>
               </div>
             </div>
@@ -196,7 +247,15 @@ export function FileQueue({ files, onUpdate, onRemove, onUploadAll, uploading }:
   );
 }
 
-export function UploadSuccess({ count, onReset }: { count: number; onReset: () => void }) {
+export function UploadSuccess({
+  count,
+  onReset,
+  gameName,
+}: {
+  count: number;
+  onReset: () => void;
+  gameName?: string;
+}) {
   return (
     <div className="flex flex-col items-center justify-center py-16 gap-4">
       <div className="w-20 h-20 rounded-full bg-val-teal/10 border border-val-teal/30 flex items-center justify-center">
@@ -206,6 +265,11 @@ export function UploadSuccess({ count, onReset }: { count: number; onReset: () =
       <p className="text-gray-500 text-sm">
         {count} file{count !== 1 ? "s" : ""} uploaded to Google Drive successfully.
       </p>
+      {gameName && gameName !== "general" && (
+        <p className="text-gray-500 text-xs font-mono flex items-center gap-1.5">
+          Stored in the <span className="text-val-teal font-semibold">{gameName}</span> folder
+        </p>
+      )}
       <p className="text-gray-600 text-xs font-mono">
         Files will appear in Photo Arena / Video Vault automatically.
       </p>

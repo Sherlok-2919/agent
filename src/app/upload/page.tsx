@@ -1,8 +1,10 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import Navbar from "@/components/ui/Navbar";
+import GameSelector from "@/components/upload/GameSelector";
 import { LoginCard, DropZone, FileQueue, UploadSuccess } from "@/components/upload/UploadComponents";
 import { uploadFiles } from "@/lib/drive";
+import { detectGameFromFilename, getGameById, GENERAL_GAME } from "@/data/games";
 
 interface FileItem {
   file: File;
@@ -21,9 +23,14 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadComplete, setUploadComplete] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
+  const [selectedGame, setSelectedGame] = useState<string>("general");
 
   const handleLogin = (pw: string) => {
     setPassword(pw);
+  };
+
+  const handleGameSelect = (gameId: string) => {
+    setSelectedGame(gameId);
   };
 
   const handleFiles = useCallback((fileList: FileList) => {
@@ -35,6 +42,19 @@ export default function UploadPage() {
       status: "pending" as const,
       type: file.type.startsWith("video/") ? "video" as const : "photo" as const,
     }));
+
+    // Auto-detect game from filename if game is still "general"
+    setSelectedGame((prev) => {
+      if (prev !== "general") return prev;
+      for (const f of newFiles) {
+        const detected = detectGameFromFilename(f.file.name);
+        if (detected !== "general") {
+          return detected;
+        }
+      }
+      return prev;
+    });
+
     setFiles((prev) => [...prev, ...newFiles]);
   }, []);
 
@@ -43,6 +63,11 @@ export default function UploadPage() {
   };
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id));
+
+  const selectedGameInfo = useMemo(
+    () => getGameById(selectedGame) || GENERAL_GAME,
+    [selectedGame]
+  );
 
   const uploadAll = async () => {
     if (!password) return;
@@ -60,7 +85,8 @@ export default function UploadPage() {
     try {
       const result = await uploadFiles(
         pendingFiles.map((f) => f.file),
-        password
+        password,
+        selectedGame
       );
 
       if (result.success && result.results) {
@@ -111,6 +137,7 @@ export default function UploadPage() {
     setFiles([]);
     setUploadComplete(false);
     setCompletedCount(0);
+    setSelectedGame("general");
   };
 
   if (!password) {
@@ -128,20 +155,44 @@ export default function UploadPage() {
     <>
       <Navbar />
       <main className="pt-24 min-h-screen flex flex-col items-center">
-        <section className="text-center px-5 pb-10">
+        <section className="text-center px-5 pb-6">
           <h1 className="text-neon-red text-[clamp(2rem,5vw,3.5rem)] mb-3">UPLOAD HUB</h1>
           <p className="text-gray-500 text-base">Drop your clips and photos into the vault.</p>
-          <div className="flex items-center justify-center gap-2 mt-3">
-            <span className="w-2 h-2 rounded-full bg-val-teal shadow-[0_0_8px_rgba(23,222,166,0.6)]" />
-            <span className="font-mono text-[0.7rem] text-val-teal tracking-wider">CONNECTED TO GOOGLE DRIVE</span>
+          <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-val-teal shadow-[0_0_8px_rgba(23,222,166,0.6)]" />
+              <span className="font-mono text-[0.7rem] text-val-teal tracking-wider">CONNECTED TO GOOGLE DRIVE</span>
+            </div>
+            {selectedGame !== "general" && (
+              <div
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full border font-mono text-[0.7rem] tracking-wider"
+                style={{
+                  background: `${selectedGameInfo.color}12`,
+                  borderColor: `${selectedGameInfo.color}30`,
+                  color: selectedGameInfo.color,
+                }}
+              >
+                {selectedGameInfo.icon} {selectedGameInfo.name}
+              </div>
+            )}
           </div>
         </section>
 
         {uploadComplete ? (
-          <UploadSuccess count={completedCount} onReset={handleReset} />
+          <UploadSuccess
+            count={completedCount}
+            onReset={handleReset}
+            gameName={selectedGameInfo.name}
+          />
         ) : (
           <>
-            <DropZone onFiles={handleFiles} />
+            {/* Step 1: Select Game */}
+            <GameSelector selectedGame={selectedGame} onSelect={handleGameSelect} />
+
+            {/* Step 2: Drop Files */}
+            <DropZone onFiles={handleFiles} selectedGame={selectedGame} />
+
+            {/* Step 3: Upload Queue */}
             {files.length > 0 && (
               <FileQueue
                 files={files}
@@ -149,6 +200,7 @@ export default function UploadPage() {
                 onRemove={removeFile}
                 onUploadAll={uploadAll}
                 uploading={uploading}
+                selectedGame={selectedGame}
               />
             )}
           </>
